@@ -15,7 +15,7 @@ output:
 
 ```{r setup, include=FALSE}
 library(knitr)
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, include=TRUE, eval=FALSE)
 ```
 
 # Preperation
@@ -23,7 +23,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Install packages
 You need to do this only once! The script below checks whether the listed CRAN packages are installed on your computer. If they are not, they will be automatically installed.
 
-```{r install_CRAN_packages, include=FALSE, eval=FALSE}
+```{r install_CRAN_packages, eval=FALSE, echo = TRUE,warning=FALSE,message=FALSE}
 # Install some of the required packaged from CRAN
 ## First specify the packages of interest
 packages = c("devtools","hdf5r","dplyr","ggplot2","stringr",
@@ -43,12 +43,12 @@ package.check <- lapply(
 ```
 
 Seurat for scRNAseq data analysis
-```{r install_Seurat, include=FALSE, eval=FALSE}
+```{r install_Seurat, include=TRUE, eval=FALSE}
 install.packages('Seurat')
 ```
 
 The following is necessary for interaction with hdf5 objects, and can only be installed using BiocManager installer
-```{r, install_rhdf5, include=FALSE, eval=FALSE}
+```{r, install_rhdf5, include=TRUE, eval=FALSE}
 BiocManager::install("rhdf5")
 ```
 
@@ -71,12 +71,11 @@ Even though dimensionality reduction methods are already integrated in the pipel
 For today's tutorial, we will use the scRNAseq atlas of the adolescent mouse cortex published by Saunders et al 2018. This data is extensive and is available at mousebrain.org, which we briefly discussed at the end of hte lecture. There is an online tool with which you can browse the data as well.
 
 ## 2.1 download the data
-The data downloaded and processed into a 'Seurat object' to prevent technical errors caused by the 'loom' file format in several computers. You can download it from the blackboard, the in COO/data folder, or from the Following Github page made for this course: <>
-'Linnerson_cortex_10X22.rds'
+The data ('Linnerson_cortex_10X22.rds') downloaded and processed into a 'Seurat object' to prevent technical errors caused by the 'loom' file format in several computers. You can download it from the blackboard, the in COO/data folder, or from the Following Github page made for this course: <https://github.com/neurOnur/BMW_scRNAseq_COO_2022>
 
 ### Load libraries
 
-```{r load_libraries, echo=FALSE,verbose = FALSE}
+```{r load_libraries, verbose = FALSE}
 library(dplyr,verbose = FALSE)
 library(ggplot2,verbose = FALSE)
 library(stringr,verbose = FALSE)
@@ -400,7 +399,7 @@ We will use a graph-based clustering algorithm discussed at the lecture. For thi
 
 We could say that cells closest to each other reside in a neighborhood
 
-```{r Seurat_fundNeughbors}
+```{r Seurat_findNeighbours}
 dataset <- FindNeighbors(object = dataset, dims = 1:20) 
 ```
 
@@ -427,7 +426,7 @@ $~$
 ##### ***Questions 2.5***
 **How do the clusters distribute on different plots?**
 $~$  
-**Why is there a differnce?**
+**Why is there a difference?**
 $~$  
 
 
