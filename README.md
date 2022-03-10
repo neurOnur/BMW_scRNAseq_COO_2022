@@ -1,7 +1,6 @@
 # BMW scRNAseq COO 2022 
-Practical on dimensionality reduction and single cell RNA sequencing (scRNAseq) data analysis for the course **BMW20421 2021-2022 Bio-informatica** at the Utrecht University 
-
 ## 1. Introduction
+Practical on dimensionality reduction and single cell RNA sequencing (scRNAseq) data analysis for the course **BMW20421 2021-2022 Bio-informatica** at the Utrecht University 
 ## 2. Source data
 For today’s tutorial, we will use the scRNAseq atlas of the adolescent mouse cortex published by Saunders et al 2018. This data is extensive and is available at mousebrain.org, which we briefly discussed at the end of hte lecture. There is an online tool with which you can browse the data as well.
 #### Sections
