@@ -442,7 +442,7 @@ div.tocify {
 <p><strong>Information on prcomp()</strong><br />
 You can check <a href="https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/prcomp" class="uri">https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/prcomp</a> for additional information</p>
 <div id="calculate-the-pca" class="section level2">
-<h2>3.1 calculate the PCA</h2>
+<h2>3.1 Calculate the PCA</h2>
 <p>First, we will perform the PCA using the features (genes) as dimensions, where each cell is an independent measurement</p>
 <div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>pca_adult_cortex <span class="ot">&lt;-</span> <span class="fu">prcomp</span>(cortex_df_sub_t_scale) <span class="co"># If using the raw data martix, we can use &quot;, scale = TRUE?</span></span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="co">#summary(pca_adult_cortex)</span></span></code></pre></div>
@@ -477,7 +477,7 @@ You can check <a href="https://www.rdocumentation.org/packages/stats/versions/3.
 <strong>TIP: Modify the code above and use order() function</strong> <span class="math inline">\(~\)</span></p>
 </div>
 <div id="plot-the-pca-results" class="section level3">
-<h3>3.2.2 Plot the PCA results</h3>
+<h3>3.2.3 Plot the PCA results</h3>
 <p>We can plot the results using ggplot. Instead of points, we will use the country names</p>
 <div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>gg_pca <span class="ot">&lt;-</span> </span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rbind</span>(pca_adult_cortex<span class="sc">$</span>x[,<span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>]) <span class="sc">%&gt;%</span> </span>
@@ -641,9 +641,13 @@ You can check <a href="https://www.rdocumentation.org/packages/stats/versions/3.
 </div>
 <div id="find-clusters-using-snn-graph-construction-and-the-louvain-algorithm" class="section level2">
 <h2>4.8 Find clusters using SNN Graph Construction and the louvain algorithm</h2>
-<p>We will use a graph-based clustering algorithm discussed at the lecture. F ### 4.8.1 SNN Graph Construction We need to build a neighborhood graph. In this network graph, each cell will be a node, and their similarity in high dimensional space will become their edges</p>
-<p>We could say that cells closest to each other reside in a neighborhood</p>
+<p>We will use a graph-based clustering algorithm discussed at the lecture.</p>
+<div id="snn-graph-construction" class="section level3">
+<h3>4.8.1 SNN Graph Construction</h3>
+<p>We need to build a neighborhood graph. In this network graph, each cell will be a node, and their similarity in high dimensional space will become their edges</p>
+<p>One could say that cells closest to each other reside in a neighborhood</p>
 <div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>dataset <span class="ot">&lt;-</span> <span class="fu">FindNeighbors</span>(<span class="at">object =</span> dataset, <span class="at">dims =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">20</span>) </span></code></pre></div>
+</div>
 <div id="find-clusters-using-the-louvain-algorithm" class="section level3">
 <h3>4.8.2 Find clusters using the louvain algorithm</h3>
 <div class="sourceCode" id="cb33"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>dataset <span class="ot">&lt;-</span> <span class="fu">FindClusters</span>(<span class="at">object =</span> dataset, <span class="at">resolution =</span> <span class="fl">0.6</span>) <span class="co"># changing the resolution will change the size/number of clusters! c(0.6, 0.8, 1)</span></span>

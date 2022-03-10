@@ -161,7 +161,7 @@ Use the prcomp() package to perform the PCA. Save the result in pca_mod
 **Information on prcomp()** \
 You can check <https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/prcomp> for additional information
 
-## 3.1 calculate the PCA
+## 3.1 Calculate the PCA
 First, we will perform the PCA using the features (genes) as dimensions, where each cell is an independent measurement
 ```{r pca calculate}
 pca_adult_cortex <- prcomp(cortex_df_sub_t_scale) # If using the raw data martix, we can use ", scale = TRUE?
@@ -209,8 +209,7 @@ $~$
 ::::
 
 
-
-### 3.2.2 Plot the PCA results
+### 3.2.3 Plot the PCA results
 We can plot the results using ggplot. Instead of points, we will use the country names
 
 ```{r plot_pca_1}
@@ -435,11 +434,12 @@ $~$
 
 
 ## 4.8 Find clusters using SNN Graph Construction and the louvain algorithm
-We will use a graph-based clustering algorithm discussed at the lecture. F
+We will use a graph-based clustering algorithm discussed at the lecture.
+
 ### 4.8.1 SNN Graph Construction
 We need to build a neighborhood graph. In this network graph, each cell will be a node, and their similarity in high dimensional space will become their edges
 
-We could say that cells closest to each other reside in a neighborhood
+One could say that cells closest to each other reside in a neighborhood
 
 ```{r Seurat_findNeighbours}
 dataset <- FindNeighbors(object = dataset, dims = 1:20) 
