@@ -1,7 +1,17 @@
 # BMW scRNAseq COO 2022 
 Practical on dimensionality reduction and single cell RNA sequencing (scRNAseq) data analysis for the course **BMW20421 2021-2022 Bio-informatica** at the Utrecht University 
 
-## Principle component analysis using prcomp()
+## 1. Introduction
+## 2. Source data
+For today’s tutorial, we will use the scRNAseq atlas of the adolescent mouse cortex published by Saunders et al 2018. This data is extensive and is available at mousebrain.org, which we briefly discussed at the end of hte lecture. There is an online tool with which you can browse the data as well.
+#### Sections
+	2.1 download the data
+	2.2 load the data
+	2.3 Shape the dataframe
+	2.4 downsize the dataset
+	2.5 invert the dataset
+	2.6 scale the dataset
+## 3. Principle component analysis using prcomp()
 Even though dimensionality reduction methods are already integrated in the Seurat pipeline, I would like you to gain a bit more insight into how the actual code for  parts of the analysis looks like. Thus, we will start by performing Principle component analysis (PCA) on single cell data using the prcomp() function, which is part of the ‘stats’ package that is an integral component of R. We will visualise the results using ggplot2 and factoextra packages
 
 #### Sections
