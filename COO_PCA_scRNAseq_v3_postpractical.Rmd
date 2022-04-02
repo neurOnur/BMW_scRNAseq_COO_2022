@@ -1,0 +1,860 @@
+---
+title: "COO PCA scRNAseq"
+subtitle: "Practical on dimensionality reduction and single cell RNA sequencing (scRNAseq) data analysis for the course BMW20421 2021-2022 Bio-informatica at the Utrecht University"
+author: "Onur BASAK"
+date: "10/3/2022"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: false
+    theme: united
+    highlight: tango
+    css: COO.css
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE, include=TRUE)
+```
+
+# Preperation
+
+## Install packages
+You need to do this only once!  
+The script below checks whether the listed CRAN packages are installed on your computer. If they are not, they will be automatically installed.
+
+```{r install_CRAN_packages, eval=FALSE, echo = TRUE}
+## First specify the packages of interest
+packages = c("devtools","hdf5r","dplyr","ggplot2","stringr",
+             "RColorBrewer","useful","readr","BiocManager","factoextra")
+
+## Now load or install&load all
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+
+```
+
+Seurat for scRNAseq data analysis
+```{r install_Seurat, include=TRUE, eval=FALSE}
+install.packages('Seurat')
+```
+
+The following is necessary for interaction with hdf5 objects, and can only be installed using BiocManager installer
+```{r install_rhdf5, include=TRUE, eval=FALSE}
+BiocManager::install("rhdf5")
+```
+
+# 1. Introduction
+  
+In this COO you will learn how to analyse single cell RNA sequencing data (scRNAseq) using the well established Seurat pipeline. In order to gain insights into the work that package functions do 'behind the scenes', we will start the COO by performing the principle component analysis separately.
+
+**Content summary**
+------
+
+**1) Principle component analysis using prcomp()**
+Even though dimensionality reduction methods are already integrated in the Seurat pipeline, I would like you to gain a bit more insight into how the actual code for parts of the analysis looks like. Thus, we will start by performing Principle component analysis (PCA) on single cell data using the prcomp() function, which is part of the ‘stats’ package that is an integral component of R. We will visualize the results using ggplot2 and factoextra packages
+
+**2) scRNAseq data analysis using Seurat**
+In this practical you will learn how to perform analyse scRNAseq data. For this, we will use the well established Seurat pipeline. This pipeline includes functions that do most of the work ‘behind the scenes’. This makes the tool very user friendly and suitable for todays tutorial. There is extensive documentation on the use of the pipeline. The following tutorial is the closest to what we will do today: <https://satijalab.org/seurat/articles/pbmc3k_tutorial.html>
+
+## Set working directory
+You may need to run this on the terminal, since in some environment the working directory is set to your home directory after the chunk is run! An alternative is to use the pull down menu at the top of the bottom-right window on RStudio. Click Files/More to see the option
+
+```{r setwd}
+setwd("/Users/onurbasak/Documents/1_BCRM/11 teaching/lectures/Bachelor/Bioinformatics_BMW/2022/COO")
+```
+
+## Load libraries
+
+```{r load_libraries, verbose = FALSE,warning=FALSE,message=FALSE}
+library(dplyr,verbose = FALSE)
+library(ggplot2,verbose = FALSE)
+library(stringr,verbose = FALSE)
+library(Seurat,verbose = FALSE)
+library(RColorBrewer,verbose = FALSE)
+library(useful,verbose = FALSE)
+library(readr,verbose = FALSE)
+library(hdf5r,verbose = FALSE)
+library(factoextra,verbose = FALSE)
+```
+
+
+
+# 2. Source data
+  
+For today’s tutorial, we will use the scRNAseq atlas of the adolescent mouse cortex published by Saunders et al 2018. This data is extensive and is available at mousebrain.org, which we briefly discussed at the end of the lecture. There is an online tool with which you can browse the data as well.
+
+## 2.1 Load the data
+
+### 2.1.1 Download
+  
+The data ('Linnerson_cortex_10X22.rds') downloaded and processed into a 'Seurat object' to prevent technical errors caused by the 'loom' file format in several computers. We have also taken out the gene expression matrix ('Linnerson_cortex_10X22_expression_matrix.rds') and saved it for use in this practical. Both files are in rds format, which can be rapidly uploaded in R. \
+
+You can download them from the blackboard, in the COO/data folder, or from the following Github page made for this course: <https://github.com/neurOnur/BMW_scRNAseq_COO_2022>
+
+### 2.1.2 Load the expression matrix
+
+```{r}
+cortex_df = readRDS('Linnerson_cortex_10X22_expression_matrix.rds') 
+dim(cortex_df) # check the dimensions
+kable(head(cortex_df[,1:3]),digits = 6)
+```
+
+***Note:*** The dataframe contains data from 6658 cells (samples) and 27998 features (genes).
+
+## 2.2 Shape the data for PCA analysis
+
+:::: {.infobox .aim data-latex="aim"}
+
+## Aim 1.1
+  
+### Learn about preprocessing of the count matrix for PCA analysis
+$~$  
+Why? Every package/function has its own format. Our dataframe is easy to read e.g. in excel, but is not ready for the analysis yet.
+$~$
+
+::::
+
+You can see the gene names as rownames and cell names as column names. Cell names contain the source 10x run (3 different runs e,g, cortex1), sample in each run (_1 or _2) and the cell barcode that was used for demultiplexing. This information wont really be useful for this practical.
+
+The numbers indicate the number of reads, or in another words, mRNA molecules detected for the gene in the respective cell. This is after correcting for PCR duplicates using the unique molecular identifier (UMI). This process was done beforehand, during the alignment step.
+
+### 2.2.1 Downsize and invert
+  
+To save time, we will randomly subset the data by selecting 666 random cells (10% of the data). Change the number is you are superficial. 
+
+We need to invert the dataset for the PCA analysis. Why? The package will compare the differences between rows and we want to analyse the differences between cells. By inverting the dataset, we will place cells into row.
+
+```{r downsize, include=TRUE, eval=FALSE}
+#select a number of cells to downsize to
+number_of_cells = 666
+#subset
+cortex_df_sub = cortex_df[,sample(ncol(cortex_df), number_of_cells)] 
+#invert
+cortex_df_sub_t = as.data.frame(t(cortex_df_sub)) 
+```
+***Note:*** There are a lot of zeros!
+object contains data from 6658 cells (samples) and 27998 features (genes). There is 1 assay (RNA)
+
+```{r downsize_pca_save_for_html, include=FALSE, eval=FALSE}
+#The following are to save the subset for plotting as an html. Since the results are different everytime, the explanation for the cluster in the final html file does not match the results of the newly subset dataset
+#saveRDS(cortex_df_sub_t,"cortex_df_sub_t_fixed.rds")
+```
+
+```{r downsize_pca_load_for_html, include=FALSE}
+cortex_df_sub_t <- readRDS("cortex_df_sub_t_fixed.rds")
+```
+
+```{r downsize_pca_plot_for_html}
+kable(head(cortex_df_sub_t[,1:3]),digits = 6)
+```
+
+### 2.2.2 Scale (Standardize)
+  
+Standardization is simply calculating the standard deviation from the mean. The mean becomes zero, a value of +1 means the gene is expressed 1 st. dev. higher than the average.
+
+Why do we do this? If we don't, we will be mostly comparing the differences in absolute expression values of genes, This means highly expressed genes will dominate the analysis. 
+
+However, if we scale (standardize), we will be looking at the pattern. We can now compare  genes with very different expression levels
+
+```{r scale}
+#scale 
+cortex_df_sub_t_scale = scale(cortex_df_sub_t)
+#convert to a dataframe
+cortex_df_sub_t_scale = data.frame(cortex_df_sub_t_scale)
+#remove and NaN values
+cortex_df_sub_t_scale[is.na(cortex_df_sub_t_scale)] = 0 
+#have a look at the final dataframe
+kable(head(cortex_df_sub_t_scale[,1:6]),digits = 6) 
+```
+
+  
+# 3. Principal component analysis
+
+   
+:::: {.infobox .aim data-latex="aim"}
+
+## Aim 1.2
+  
+### Perform Principle component analysis from scratch and interpret the results
+$~$  
+  
+Why? Our data is high dimensional, which makes interpreting the differences between cells difficult. PCA analysis will summarize the variation in the data and help us discover how each gene is contributing to this variation
+$~$
+
+::::
+
+It is to start with the real practical! Here, you will use PCA dimensionality reduction technique to reduce the data into 'meaningful' dimensions. For this, we will use the prcomp() package 
+
+Use the prcomp() package to perform the PCA. Save the result in and object named 'pca_adult_cortex'
+
+**Information on prcomp()** \
+You can check <https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/prcomp> for additional information
+
+## 3.1 Calculate the PCA
+  
+First, we will perform the PCA using the features (genes) as dimensions, where each cell is an independent measurement
+  
+```{r pca calculate}
+pca_adult_cortex <- prcomp(cortex_df_sub_t_scale) 
+# If using the raw data martix without columns with only zero values, we can use ", scale = TRUE" option
+#This somehow causes a problem, thus is omited here
+#summary(pca_adult_cortex)
+```
+
+## 3.2 Visualise results
+### 3.2.1 Variation explained by PCs
+We can have a look at the variation explained by each component using fviz_eig() function of the factoextra package
+
+```{r check_eigen_factors}
+fviz_eig(pca_adult_cortex,
+         barfill = 'purple',
+         addlabels = TRUE,
+         main = 'PCA analysis of the mouse cortex scRNAseq data')
+```
+
+:::: {.infobox .question data-latex="question"}
+
+<br>
+## Question 1.1
+**What does percentage of explained variance mean?** \
+$~$  
+**TIP: Dont forget, we have calculated more dimensions** \
+$~$  
+
+
+::::
+
+<br>
+## Answer 1.1
+> **The fraction of the total variance that is captures by this component.**
+
+
+### 3.2.2 Check top contributors to each PC
+We can then check which genes contribute to the first PC1 the most
+
+```{r check_PC1_contribution}
+loadings_pc1 <- pca_adult_cortex$rotation[, 1]
+loadings_pc1[which.max(abs(loadings_pc1))] 
+```
+
+:::: {.infobox .practice data-latex="practice"}
+
+## Practice 1.2
+**Can you find the top 5 genes that contribute to PC2?**
+$~$  
+**TIP: Modify the code above and use order() function**
+$~$  
+
+::::
+
+## Answer Practice 1.2
+> the order function will output numbers that indicate the previous location of each ordered element. You can use it to actually reorder an array using [] 
+
+```{r answer_practice_1}
+pca_adult_cortex$rotation[, 2][order(pca_adult_cortex$rotation[, 2],decreasing = TRUE)][1:5]
+```
+
+
+### 3.2.3 Plot the PCA results
+We can plot the results using ggplot. Instead of points, we will use the country names
+
+```{r plot_pca_1}
+gg_pca <- 
+  rbind(pca_adult_cortex$x[,1:2]) %>% 
+  as_tibble() %>% 
+  mutate(name = rownames(cortex_df_sub_t), 
+         type = rep("cells", length(rownames(cortex_df_sub_t))))
+
+gg_pca %>%
+  ggplot(aes(x = PC1, y = PC2, shape = type, colour = type)) + #, label = name
+  geom_point() +
+  #geom_text(hjust = 0, nudge_x = 0.05) +
+  coord_fixed() +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(x = "PC 1", y = "PC 2", 
+       title = "PCA of scRNAseq of cortex")
+```
+
+
+:::: {.infobox .practice data-latex="practice"}
+## Practice 1.3
+**Plot the differences between two other dimensions and answer the question below**
+$~$
+::::
+
+## Answer practice 1.3
+$~$ 
+> We can look at dimensions 3 and 4
+
+```{r answer_practice_2}
+
+gg_pca <- 
+  rbind(pca_adult_cortex$x[,3:4]) %>% 
+  as_tibble() %>% 
+  mutate(name = rownames(cortex_df_sub_t), 
+         type = rep("cells", length(rownames(cortex_df_sub_t))))
+
+gg_pca %>%
+  ggplot(aes(x = PC3, y = PC4, shape = type, colour = type)) + #, label = name
+  geom_point() +
+  #geom_text(hjust = 0, nudge_x = 0.05) +
+  coord_fixed() +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(x = "PC 3", y = "PC 4", 
+       title = "PCA of scRNAseq of cortex")
+
+```
+
+:::: {.infobox .question data-latex="question"}
+## Questions 1.4
+**What do you conclude from these plots?**
+$~$  
+**TIP: Think of population/groups of cells, or differences between PCs**
+$~$
+::::
+
+## Answer 1.4
+> **Back to basics: Each PC is independent! Thus the differences seen between cells on each PC is also independent of each other**
+$~$
+**While most cells look similar, there are some cells that are different in each PC**
+$~$  
+**These are not the same cells! For instance, some cells that differ a lot from the rest on the PC1 axis seem to be a the population average on PC2**
+$~$
+
+:::: {.breakbox data-latex="notice"}
+
+#### IF YOU HAVE TIME
+
+**Repeat the whole analysis by randomly sampling a different number of cells**
+
+::::
+
+
+:::: {.breakbox data-latex="notice"}
+
+#### DON'T FORGET TO GIVE A BREAK!!
+
+::::
+
+
+# 4. Seurat analysis
+
+
+:::: {.infobox .aim data-latex="aim"}
+
+## Aim 2
+### Process the scRNAseq data of the adolescent mouse cortex in order to reveal major cell clusters and identify cell types
+
+$~$  
+Why? A major use of the scRNAseq is cell type identification. To achieve this, you need to perform quality control steps and cluster analysis. To visualise the data, you will perform dimensionality reduction. Finally, you can plot marker genes that you find from the literature to reveal the cell type identity of clusters
+$~$
+
+::::
+
+It is time for the scRNAseq analysis! We will use the Seurat object that we have uploaded. This object made specially for the Seurat pipeline has a lot of 'slots' where information can be stored, and the architecture is a bit complicated. You do not need it for this tutorial, except what is mentioned
+
+
+## 4.1 The dataset
+  
+### 4.1.1 Load and downsize the dataset
+Load the Seurat object taht was saved as rds
+```{r load_data}
+adult_cortex <- readRDS(file = 'Linnerson_cortex_10X22.rds')
+adult_cortex
+```
+
+***Note:*** The object contains data from 6658 cells (samples) and 27998 features (genes). There is 1 assay (RNA).
+
+To save from time, we will also subset the Seurat object by selecting 1000 random cells. For this, we can use the subset() functuion
+
+```{r Seurat_downsize}
+adult_cortex_small <- subset(adult_cortex, downsample = 1000)
+dataset = adult_cortex_small #rename for convenience
+dataset
+```
+
+```{r downsize_seurat_save_for_html, include=FALSE, eval=FALSE}
+#The following are to save the subset for plotting as an html. Since the results are different everytime, the explanation for the cluster in the final html file does not match the results of the newly subset dataset
+#saveRDS(dataset,"Seurat_obsject_downsize.rds")
+```
+
+```{r downsize_seurat_load_for_html, include=FALSE}
+dataset <- readRDS("Seurat_obsject_downsize.rds")
+```
+
+### 4.1.2 Check the metadata
+  
+This is where 'cell level' information is stored. This means there is one value for each cell
+```{r metadata}
+kable(head(dataset@meta.data[,1:6]),digits = 6)
+```
+
+## 4.2 Quality metrics
+  
+### 4.2.1 Plot some quality metrics
+  
+An important metric is the number of RNA molecules (nCount_RNA) and genes (nFeature_RNA) per cell. These are automatically calculated when the Seurat object is generted form a data matrix.
+
+```{r Seurat_QC_plot}
+VlnPlot(object = dataset, features = c("nCount_RNA", "nFeature_RNA", cols = "blue"),
+				pt.size = .01)
+```
+Note that each dot shows a cell. Their position on the y-axis show the value indicated on teh y-axis label. However, their position on the x-axis doesn't really mean anything! It is spread for easier visualisation of density of cells. What matters is the thickness of the violin plot; the ticker it is, the more cells are present at that value. Sometimes, you can spot 'two populations' since there are two groups of cells with different level of eg. number of genes
+
+### 4.2.2 Calculate additional QC metrics
+  
+Start by generating  QC metrics additional to the no of genes/features
+
+**Mitochondrial** RNA is the mRNA that is generated by the mitochondrial genome. Normally, these constitute a small fraction of the total mRNA. However, in dying or damaged cells, while cytoplasmic/nuclear mRNA degrades rapidly, mitochondrial mRNA is rather well preserved. Thus, a high ratio of mitochondrial mRNA indicates BAD cell quality.
+
+mRNA coding for the **Ribosomal** subunit proteins is abundant (not to be confused with rRNA). Usually, a high ribosomal RNA percentage indicates production of a lot of proteins, and is very high in dividing cells or some secretory cells that need to constantly produce proteins. However, if most of the mRNA (>30-50%) that we detect is ribosomal, it means that we wont learn much from this cell, and that we should exclude it from the analysis.
+
+```{r Seurat_calculate_ribo_mito}
+dataset <- PercentageFeatureSet(dataset,pattern='^mt-', col.name = "percent.mt")
+dataset <- PercentageFeatureSet(dataset,pattern='Rp(s|l)', col.name = "percent.ribo")
+```
+
+### 4.2.3 Plot the additional quality metrics
+  
+We can use the VlnPlot() function of the Seurat package to visualise the QC metrics
+
+```{r Seurat_plot_ribo_mito, fig.width = 10, fig.asp = .5}
+plot0 <- VlnPlot(object = dataset, features = c("percent.mt", "percent.ribo"),pt.size = 0, cols = "blue")
+plot0
+```
+
+Let's visualize how mito and ribo percentages change as a function of the number of counts
+
+```{r plot_scatter, fig.width = 8,fig.asp = .8}
+plot1 <- FeatureScatter(dataset, feature1 = "nCount_RNA", feature2 = "percent.mt",pt.size = 2, cols = "blue")
+plot2 <- FeatureScatter(dataset, feature1 = "nCount_RNA", feature2 = "percent.ribo",pt.size = 2, cols = "blue")
+plot3 <- FeatureScatter(dataset, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",pt.size = 2, cols = "blue")
+plot_null <- ggplot() + theme_void()
+(plot1 + plot2) / (plot3 + plot_null)
+```
+
+:::: {.infobox .question data-latex="question"}
+## Question 2.1
+  
+**What is the relationship between total number of RNA per cell (nCounts) and** \
+  **i) mitochondrial RNA percentage?** \
+  **ii) ribosomal RNA percentage?** \
+  **ii) number of features?**
+$~$
+::::
+
+## Answer 2.1
+  
+> **i) cells with high mitochondrial % have low levels of total RNA counts. This makes sense, since we expect low quality cells to have less RNA** \
+  **ii) cells with high ribosomal RNA percentage also have low levels of total RNA counts. This raises and alarm; could these be bad quality? Not necessarily. Cells high high levels of ribosomal genes are usually either dividing cells, or cells with secretory function (high protein production). However, if there too many ribosomal genes e.g. >30-50%, than we will not really get much information out of tehse cells. The best practice is to keep the cells with <50% in the analysis and keep an eye on this at the end of the analysis and see if these represent a specific cell type** \
+  **ii) nCounts and nFeatures correlates as expected. Some cells seem to have a slightly different correlation (lower end).If this difference is very high, it will introduce noise in our analyiss. For now, this is not a problem**
+$~$
+
+## 4.3  Filter low quality cells
+
+:::: {.infobox .practice data-latex="practice"}
+## Practice 2.2
+  
+**We do not want to have low quality cells in our data. Looking at the plot, determine which cells to get rid of**
+$~$ 
+::::
+$~$
+
+Use subset() to fetch the  cells that fit in your description
+```{r Seurat_filter_practice, eval =FALSE, include=TRUE}
+cutoff_mito = 
+cutoff_ribo =
+dataset <- subset(x = dataset, subset = percent.mt < cutoff_mito & percent.ribo < cutoff_ribo)
+```
+
+## Answer Practice 2.2
+  
+> This really needs some experience! 
+- You can see the aberrant bump on mitochondrial % at low number of reads. A cut off of 5 will get rid of this
+- Ribosomoal % look similar, but this doesn't immediately mean something bad. I would suggest to leave it in, and later see if these cells represent a different cells type. so a cut-off of 25-30 will suffice
+
+```{r Seurat_filter_answer}
+cutoff_mito = 5
+cutoff_ribo = 30
+dataset <- subset(x = dataset, subset = percent.mt < cutoff_mito & percent.ribo < cutoff_ribo)
+```
+
+## 4.4 Normalise
+  
+In Seurat, standard preprocessing workflow is replaced by a single command. However, it is good to see this part to learn each step. First, we will normalize the data. This is to get rid of the differences in total RNA counts between cells. In other words, we will equalize the total count number in each cell to a fixed number (e.g. 10000 RNA molecules per  cell)
+
+```{r Seurat_normalise}
+dataset <- NormalizeData(object = dataset, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+## 4.5 Detection of variable genes across the single cells
+  
+We want to find out 'informative genes' that will explain biological differences to use in some of hte downstream applications. If a gene is expressed everywhere, that doesnt tell us much. However, if a gene is expressed in a subset of cells, this will cause 'variation'
+
+We can detect these genes using FindVariableFeatures() function
+
+```{r Seurat_FindVariableFeatures}
+## Here, we select the top 1,000 highly variable genes (Hvg) for downstream analysis.
+dataset <- FindVariableFeatures(object = dataset, selection.method = 'mean.var.plot', mean.cutoff = c(0.0125, 4), dispersion.cutoff = c(0.5, Inf))
+length(x = VariableFeatures(object = dataset)) #3084
+
+```
+
+Identify the 10 most highly variable genes
+```{r Seurat_top10}
+top10 <- head(VariableFeatures(dataset), 10)
+top10
+```
+
+Now visualize
+
+```{r Seurat_plot_variablefeatures, fig.width = 8,fig.asp = .5}
+## Plot
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(dataset)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+***Note:Dispersion indicates variation, while red color shows 'significantly variable' genes***
+
+Now print the top 1000 highly variable genes 
+
+```{r Seurat_hvgenes}
+hv.genes <- head(rownames(HVFInfo(object = dataset)), 1000)
+head(hv.genes,n=100) # list the first 100
+```
+
+## 4.6 Scale the data and get rid of the confounders
+  
+We discussed scaling (standardisation) in the previous section.Here, we will only take the hv.genes to scale and use in downstream dimensionality reduction. 
+
+We can also get rid of the confounding factors at this point. These factors introduce 'technical noise' to the data. For instance, the number of reads per cell can influence the amount of information in a cell and make it seem different from another cell with low RNA levels, even though they are similar cells. 
+
+We will use the ScaleData() function of hte Seurat package. The confounding factors can be discarded using 'vars.to.regress'
+
+```{r Seurat_scale}
+dataset <- ScaleData(object = dataset, features = hv.genes, vars.to.regress = c("percent.mt","nFeature_RNA"))
+```
+##### Dimentionality reduction #####
+
+## 4.7 PCA analysis
+  
+### 4.7.1 Perform PCA
+  
+Performing Dimensionality reduction in Seurat has been made very simple! We can first calculate the PCA
+```{r Seurat_PCA_calculate}
+dataset <- RunPCA(object = dataset, features = hv.genes, verbose = FALSE,npcs = 50)
+```
+
+### 4.7.2  Plot PCA results
+  
+```{r Seurat_PCA_plot}
+plot1 <- DimPlot(object = dataset, reduction = 'pca',dims = c(1,2))
+plot1
+```
+It is also easy to find out genes that contribute to the + and - direction of the top PCs! We can also plot the level of contribution
+
+```{r Seurat_PCA_summary}
+print(dataset[["pca"]], dims = 1:5, nfeatures = 5) # First box
+VizDimLoadings(dataset, dims = 1:2, reduction = "pca") # Second box
+```
+
+:::: {.infobox .question data-latex="question"}
+## Question 2.3
+  
+**Some genes contribute more to the variation then others... What do these genes and principle components tell us?** \
+$~$  
+::::
+
+## Answer 2.3
+  
+>  **We can learn about the main reason of variation. For instance, if it is inflammation, we will see inflammatory genes in PC1**
+$~$
+
+### 4.7.3 EXTRA: Visualise how genes contribute to PCs on heatmaps
+
+We can use an integrated function of Seurat to plot heatmaps to visualize genes that drive different principle components
+```{r Seurat_PCA_heatmaps, fig.width=10,fig.height=10}
+PCHeatmap(dataset,dims = 1:6,ncol =2)
+```
+
+Plot some of these genes on PCA plots to see how their expression is distributed along different PCs. 
+For this, we will look at the first 4 PCs, indentify genes that are highest on + and - axis and plot them on PC1/PC2 and PC3/PC4 plots. 
+
+The first two components:
+```{r Seurat_PCA_heatmaps_dim1_2, fig.width=10,fig.height=5}
+PCHeatmap(dataset,dims = c(1,2),ncol =2)
+```
+
+Ly6c1 and Cldn11 genes look interesting:
+```{r Seurat_FeaturePlot_PC_genes_dim1_2, fig.width=10,fig.height=10}
+plot_f1 <- FeaturePlot(dataset,features = c('Ly6c1','Cldn11'),reduction = 'pca',dims = c(1,2),cols = c('gray','blue','red'))
+plot_f2 <- FeaturePlot(dataset,features = c('Ly6c1','Cldn11'),reduction = 'pca',dims = c(3,4),cols = c('gray','blue','red'))
+plot_f1 / plot_f2
+
+```
+
+Now components 3 and 4:
+```{r Seurat_PCA_heatmaps_dim3_4, fig.width=10,fig.height=5}
+PCHeatmap(dataset,dims = c(3,4),ncol =2)
+```
+
+C1qa and Mog genes look interesting:
+```{r Seurat_FeaturePlot_PC_genes_dim3_4, fig.width=10,fig.height=10}
+plot_f3 <- FeaturePlot(dataset,features = c('C1qa','Mog'),reduction = 'pca',dims = c(1,2),cols = c('gray','blue','red'))
+plot_f4 <- FeaturePlot(dataset,features = c('C1qa','Mog'),reduction = 'pca',dims = c(3,4),cols = c('gray','blue','red'))
+plot_f3 / plot_f4
+
+```
+
+
+## 4.8 Find clusters using SNN Graph Construction and the louvain algorithm
+  
+We will use a graph-based clustering algorithm discussed at the lecture.
+
+### 4.8.1 SNN Graph Construction
+  
+We need to build a neighborhood graph. In this network graph, each cell will be a node, and their similarity in high dimensional space will become their edges
+
+One could say that cells closest to each other reside in a neighborhood
+
+```{r Seurat_findNeighbours}
+dataset <- FindNeighbors(object = dataset, dims = 1:20) 
+```
+
+### 4.8.2 Find clusters using the louvain algorithm
+  
+```{r Seurat_cluster_plot}
+dataset <- FindClusters(object = dataset, resolution = 0.6) # changing the resolution will change the size/number of clusters! c(0.6, 0.8, 1)
+VlnPlot(object = dataset, features = c("nCount_RNA", "nFeature_RNA"))
+VlnPlot(object = dataset, features = c("percent.mt", "percent.ribo"))
+
+```
+
+There are 9 clusters in total. We looked at the number of genes and reads per cluster to see if there is a clear cluster where cells with high/low level of genes/reads or mito/ribo genes cluster. If there is, this might mean two things:
+1) They cluster because of these features, which means this is a **technical artifact!** 
+2) This is a **biological difference** of this cell type
+To know the difference, you need knowledge of teh biological system as well. 
+In this case, clusters 6/7 are high in ribosomal percentage. We will see if they have clearly identifiable cell type markers, and if the result makes sense. If not, I would recommend to go back to teh filtering stage and be more stringent with the ribo% filter
+
+## 4.9 UMAP and t-SNE analysis
+  
+We will use the top PCs to calculate the umap and tSNE coordinates
+  
+```{r Seurat_umap_tsne_calculate}
+dataset <- RunUMAP(object = dataset, reduction = "pca", dims = 1:20, verbose = FALSE)
+dataset <- RunTSNE(object = dataset, dims = 1:20, verbose = FALSE)
+```
+
+:::: {.infobox .practice data-latex="practice"}
+## Practice 2.4
+  
+**Do you want to see them? adjust the DimPlot function to show the PCA, UMAP and t-SNE results!**
+$~$  
+**Include the cluster colors to visualize clusters**
+$~$ 
+::::
+
+## Answer 2.4
+
+> Use the DimPlot() function, pass in 'umap','tsne' or 'pca' in 'reduction' option
+
+```{r Seurat_umap_tsne_pca_plot, fig.width = 8, fig.asp = .8}
+plot_umap <- DimPlot(object = dataset, reduction = 'umap')
+plot_pca <- DimPlot(object = dataset, reduction = 'pca')
+plot_tsne <- DimPlot(object = dataset, reduction = 'tsne')
+
+(plot_pca | plot_null) / (plot_umap | plot_tsne)
+
+```
+
+:::: {.infobox .question data-latex="question"}
+## Question 2.5
+  
+**How do the clusters distribute on different plots?**
+$~$  
+**Why is there a difference?**
+$~$
+::::
+
+## Answer 2.5
+  
+> **Similar clusters are plotted close to each other**
+$~$
+
+:::: {.infobox .practice data-latex="practice"}
+## Practice 2.6
+  
+### Identify cell types!
+  
+**Use google or pubmed to find marker genes for neurons, inhibitory neurons, astrocytes and oligodendrocytes**
+$~$  
+**Plot the expression of these marker genes using the VlnPLot() function**
+$~$  
+::::
+
+## Answer 2.6
+> Here is what I found:
+    Rbfox3 (NeuN) and Syt1 are well known neuronal markers.
+    Gad1 and Gad2 best known "GABAergic" neuronal markers.
+    S100b is a marker of astrocytes
+    Mobp is hihghly expressed in oligodendrocytes.
+
+Plotting these, we can estimate which cluster is which cell type:
+
+```{r Seurat_Vln_marker_gene_plot, fig.width = 8, fig.asp = .8}
+VlnPlot(object = dataset, features = c("Rbfox3","Syt1","Gad1","Gad2","S100b","Mobp"),pt.size = 0,ncol = 2)
+```
+
+Clusters 0, 2, 3, 4, 7 and 8 are neuronal. It seems cluster 8 contains GABAergic neurons (Gad1+ Gad2+). Note how well this cluster is seperated from rest of the neurons!
+
+Clusters 5 has high levels of S100b, representing astrocytes, while cluster 1 clearly has very high Mobp, suggesting that theseare oligodendrocytes.
+
+Then why does cluster 1 have some S100b? This is becuase the gene I chose is not 'only expressed in astrocytes', but is 'highest in astrocytes' with some expression in oligodendrocytes. It is often hard to find singular markers for each cell types.
+
+Note that there is also some S100b in cluster 0, which is neuronal. It could be that these cells indeed have some S100b. It is also possible that cluster 1 is mixed, and one needs to 'subcluster' it to see if there is a S100b+ subpopulation.
+
+
+# 5. EXTRA - post practical
+  
+## 5.1 Discuss UMAP versus t-SNE
+
+In theory, UMAP is very similar to t-SNE. Both are:
+-----
+- machine learning algorithms
+- are stochactic (or random)
+- try to show to relationship between cells taking all the gene expression into account
+- good in finding and visualizing pattern in the data
+
+
+They differ in 3 major points:
+-----
+- t-SNE is better is preserving **local relationship**, while UMAP is better at **preserving the global** structure of the data.
+- UMAP is faster and more efficient 
+- UMAP is also easier to optimize. t-SNE can, in theory, yield very similar results to UMAP. But this needs 'tweeking' of quite a few parameters
+
+## 5.2 For the curious, some more details 
+
+:::: {.warningbox .warning data-latex="warning"}
+
+## NOTE! THIS IS VERY HIGH LEVEL
+  
+**You are not expected to follow/understand this part and none of it will be in the exam. Thius is purely for people who are curious about the details of the techniques**
+
+::::
+
+### 5.3.3 t-SNE (t-distributed stochastic neighbor embedding)
+
+A machine learning algorithm that will place cells similar on **higher dimension** (e.g. with respect to 20000 genes/dimensions) close to each other in the **lower dimension**. 
+
+More specifically, t-SNE is a simple machine learning algorithm that minimizes the divergence between two distributions of pairwise similarity; input objects and the corresponding low-dimensional points in the embedding. 
+
+The formula looks like this:
+
+![](/Users/onurbasak/Documents/1_BCRM/11 teaching/lectures/Bachelor/Bioinformatics_BMW/2022/COO/images/tsne_formula.png)
+
+source: "https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668"
+
+You definitely dont need to know this! But this is all t-sNE is; 4 steps repeated again and again. The following plot show 1000 iterations that the algorithm performs. Note that with each calculation, clusters are better seperated. However, it is still hard to find where exactly to place some of these cells, that continue to jiggle even at the end.
+
+![](/Users/onurbasak/Documents/1_BCRM/11 teaching/lectures/Bachelor/Bioinformatics_BMW/2022/COO/images/tsne_example.gif)
+
+
+Source: (https://www.oreilly.com/content/an-illustrated-introduction-to-the-t-sne-algorithm/)
+
+### 5.3.4 UMAP (Uniform Manifold approximation and projection)
+
+UMAP is a machine learning algorithm that uses 'manifolds' to estimate the relationship between the data points at high dimension with lower dimension.M anifolds are built on simplices. Here are some low dimensional ones.
+
+![](/Users/onurbasak/Documents/1_BCRM/11 teaching/lectures/Bachelor/Bioinformatics_BMW/2022/COO/images/simplices.png)
+
+There is also a formula involved in the calculations which we wont show. The algorithm with a 'different approach ' than t-SNE to find the relationship between cells (or otehr data points/samples).
+
+You can find more information on : "https://umap-learn.readthedocs.io/en/latest/how_umap_works.html"
+
+### 5.3.5 Comparision of t-SNE and UMAP penalty system 
+
+So, why is UMAP better is estimating global architecture? A major different is the cost-function used to 'give a penalty' when the embedding in **high dimesion** (let's say X) is different than in **low dimesion** (let's say Y). Both formulas will try to avoid a penalty. 
+- For two cells this is easy! Place them close to each other if they are close...
+- But for thousands of cells, they need to make a compromise and find an embedding where the cost function is the lowest on **all cell on average**.
+
+#### Here is how this works
+
+"In contrast to t-SNE, UMAP uses Cross-Entropy (CE) as a cost function instead of the KL-divergence:"
+
+##### t-SNE and  KL-divergence
+
+Let's try to look at how cost function changes with repect to the relationship between X (**distance on high dimesion**) and Y (**distance on low dimesion**)
+![](/Users/onurbasak/Documents/1_BCRM/11 teaching/lectures/Bachelor/Bioinformatics_BMW/2022/COO/images/tSNE_KL_penalty.png)
+
+t-SNE is using the KL function. Red indicates high penalty that needs to be avoided. You can see that with low X (to the top), Y also needs to be low (to the left). Otherwise the penalty is high. That's good! Cells close to each other in high dimension (low X) will be placed close to each other (low Y).
+
+However, when X is high (Cells have a long distance) Y can be high, but also can be low (see bottom left, very blue). Thus, cells away from each other can end up close on the map. 
+
+This is a heavy compromise t-SNE gives; **make sure very close cells are placed very close, even if random clusters can end up close to each other as well**
+
+##### UMAP and Cross-Entropy (CE)
+
+![](/Users/onurbasak/Documents/1_BCRM/11 teaching/lectures/Bachelor/Bioinformatics_BMW/2022/COO/images/UMAP_CE_penalty.png)
+
+UMAP is using the Cross-Entropy function. Red indicates high penalty that needs to be avoided. You can see that with low X (to the top), Y also needs to be low (to the left). Otherwise the penalty is high. That's good! Cells close to each other in high dimension (low X) will be placed close to each other (low Y).
+
+Now is the difference: When X is high (Cells have a long distance), Y has to be high as well! Thus, cells away from each other can end up away from each other on the map. 
+
+##### Conclusion
+
+Does it mean that UMAP is better than t-SNE? Not really. UMAP has more advantages while looking as 'global similarities' while  t-SNE performs well when looking at 'local interactions'.
+
+# 6. Example questions
+
+The following is a question from teh last year. We didnt go into details of k-Means this year, thus the question may look out of context. But it will give you an idea of what can be expected. **A** indicated the answer
+
+**Example Question 1**
+------
+Please list four important facts about the k-means algorithm on the following topics:
+i)	What is it used for?
+> **A**: For classification of data into groups/clusters
+
+ii)	Please explain the important steps 
+> **A**: Determine the expected number of clusters. Take random points in the data and calculate the distance of each point to these random points to assign clusters. Then calculate the center of the cluster. Finally, repeat this process until there is no change in the centeral point, meaning that a stability is reached.
+
+iii)	Name one of the drawbacks
+> **A**: needs estimation of the number of clusters beforehand. Cannot work on all different ‘shapes’ of data. Cannot find outliers. Does not show how similar each cluster is.
+
+iv)	If you run the k-means algorithm on the same data two different times, do you always get the same results? Why/why not?
+> **A**: No. The process is stochastic, starts randomly and is repeated many times until stability is reached. The final results will, in most cases, be different. 
+
+<br>
+Here is another question for you to think about:
+<br>
+**Example Question 2**
+------
+Which steps of the single cell RNA sequencing analysis aims at getting rid of the differences in number of reads between cells (e.g. a cell qith 1000 features and another with 5000 features)?
+
+1) Scaling
+2) Normalization
+3) Scaling
+4) Dimensionality reduction
+5) Clustering
+
+> **A**: I wont provide the answer for this one
+
+# 7. Acknowledgements
+
+The images for info boxes are taken from https://www.cleanpng.com \
+Also see:
+https://umap-learn.readthedocs.io/en/latest/how_umap_works.html \
+https://www.oreilly.com/content/an-illustrated-introduction-to-the-t-sne-algorithm
+
